@@ -65,6 +65,11 @@ fn draw_rectangle(
             let cx = x + i;
             let cy = y + j;
 
+            if cx >= img_w || cy >= img_h {
+                //don't write past size of image
+                continue;
+            }
+
             img[cx + cy * img_w] = color;
         }
     }
@@ -76,9 +81,9 @@ fn main() -> std::io::Result<()> {
         fs::remove_file(filename)?;
     }
 
-    let win_w: usize = 512;
+    let win_w: usize = 1024;
     let win_h: usize = 512;
-    let mut framebuffer: Vec<u32> = vec![255; win_w * win_h];
+    let mut framebuffer: Vec<u32> = vec![pack_color_rgb(60, 60, 60); win_w * win_h];
 
     let map_w: usize = 16;
     let map_h: usize = 16;
@@ -109,23 +114,9 @@ fn main() -> std::io::Result<()> {
     let player_x = 3.456;
     let player_y = 2.345;
     let player_a: f64 = 1.523; //player view direction
+    let fov = std::f64::consts::PI / 3.;
 
-    for j in 0..win_h {
-        //fill screen with a color gradient
-        for i in 0..win_w {
-            //for a "grid":
-            //let ncells = win_h / map_h;
-            //let r: u8 = (j * 256 / ncells) as u8;
-            //let g: u8 = (i * 256 / ncells) as u8;
-
-            let r: u8 = (255 * j / win_h) as u8;
-            let g: u8 = (255 * i / win_w) as u8;
-            let b: u8 = 0;
-            framebuffer[i + j * win_w] = pack_color_rgb(r, g, b);
-        }
-    }
-
-    let rect_w = win_w / map_w;
+    let rect_w = win_w / (2 * map_w);
     let rect_h = win_h / map_h;
     for j in 0..map_h {
         //draw the map
@@ -148,32 +139,37 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    //draw player on map
-    draw_rectangle(
-        &mut framebuffer,
-        win_w,
-        win_h,
-        (rect_w as f64 * player_x) as usize,
-        (rect_h as f64 * player_y) as usize,
-        5,
-        5,
-        pack_color_rgb(255, 255, 255),
-    );
+    for i in 0..win_w / 2 {
+        //cast field of vision AND 3D view
+        let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
+        for t in 0..400 {
+            //since Rust doesn't allow step by float, remap so step==1
+            let t = t as f64 / 20.; //then transform back to original range
 
-    //raycast sightline
-    for t in 0..400 {
-        //since Rust doesn't allow step by float, remap so step==1
-        let t = t as f64 / 20.; //then transform back to original range
+            let cx = player_x + t * angle.cos();
+            let cy = player_y + t * angle.sin();
+            angle.sin();
 
-        let cx = player_x + t * player_a.cos();
-        let cy = player_y + t * player_a.sin();
-        if map[cx as usize + cy as usize * map_w] != " " {
-            break;
+            let pix_x = (cx * rect_w as f64) as usize;
+            let pix_y = (cy * rect_h as f64) as usize;
+            //draw the visibility cone on the map
+            framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(255, 255, 255);
+
+            if map[cx as usize + cy as usize * map_w] != " " {
+                let column_height = (win_h as f64 / t) as usize;
+                draw_rectangle(
+                    &mut framebuffer,
+                    win_w,
+                    win_h,
+                    win_w / 2 + i,
+                    win_h / 2 - column_height / 2,
+                    1,
+                    column_height,
+                    pack_color_rgb(0, 255, 255),
+                );
+                break;
+            }
         }
-
-        let pix_x = (cx * rect_w as f64) as usize;
-        let pix_y = (cy * rect_h as f64) as usize;
-        framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(255, 255, 255);
     }
 
     drop_ppm_image(filename, &framebuffer, win_w, win_h)?;
