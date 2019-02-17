@@ -2,6 +2,8 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+extern crate rand;
+use rand::Rng;
 
 fn pack_color_rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
     let b1 = r as u32;
@@ -25,11 +27,15 @@ fn unpack_color(color: &u32, r: &mut u8, g: &mut u8, b: &mut u8, a: &mut u8) {
 
 fn drop_ppm_image(filename: &str, image: &Vec<u32>, w: usize, h: usize) -> std::io::Result<()> {
     assert_eq!(image.len(), w * h);
-    let output = File::open(filename);
-    let output = match output {
-        Ok(file) => file,
-        Err(_) => File::create(filename).expect("Cannot open or create file"),
-    };
+    if Path::new(filename).exists() {
+        fs::remove_file(filename)?;
+    }
+    let output = File::create(filename).expect("Cannot open or create file");
+    //let output = File::open(filename);
+    //let output = match output {
+    //Ok(file) => file,
+    //Err(_) => File::create(filename).expect("Cannot open or create file"),
+    //};
     let mut output = BufWriter::new(output);
     let header = format!("P6\n{} {}\n255\n", w, h);
 
@@ -76,104 +82,124 @@ fn draw_rectangle(
 }
 
 fn main() -> std::io::Result<()> {
-    let filename = "./out.ppm";
-    if Path::new(filename).exists() {
-        fs::remove_file(filename)?;
-    }
-
     let win_w: usize = 1024;
     let win_h: usize = 512;
     let mut framebuffer: Vec<u32> = vec![pack_color_rgb(60, 60, 60); win_w * win_h];
 
     let map_w: usize = 16;
     let map_h: usize = 16;
-    let mut map: Vec<&str> = "0000222222220000\
-                              1              0\
-                              1      11111   0\
-                              1     0        0\
-                              0     0  1110000\
-                              0     3        0\
-                              0   10000      0\
-                              0   0   11100  0\
-                              0   0   0      0\
-                              0   0   1  00000\
-                              0       1      0\
-                              2       1      0\
-                              0       0      0\
-                              0 0000000      0\
-                              0              0\
-                              0002222222200000"
-        .split("")
+    let map: Vec<char> = "0000222222220000\
+                          1              0\
+                          1      11111   0\
+                          1     0        0\
+                          0     0  1110000\
+                          0     3        0\
+                          0   10000      0\
+                          0   0   11100  0\
+                          0   0   0      0\
+                          0   0   1  00000\
+                          0       1      0\
+                          2       1      0\
+                          0       0      0\
+                          0 0000000      0\
+                          0              0\
+                          0002222222200000"
+        .chars()
+        //.split("")
         .collect(); // our game map
                     //strip out null chars
-    map.remove(map_w * map_h - 1);
-    map.remove(0);
+                    // println!("{:?}", map);
+                    //map.remove(map_w * map_h - 1);
+                    //map.remove(0);
 
     assert_eq!(map.len(), map_w * map_h);
 
     let player_x = 3.456;
     let player_y = 2.345;
-    let player_a: f64 = 1.523; //player view direction
+    let mut player_a: f64 = 1.523; //player view direction
     let fov = std::f64::consts::PI / 3.;
+
+    let ncolors: usize = 10;
+    let mut colors: Vec<u32> = vec![0; ncolors];
+    let mut rng = rand::thread_rng();
+    for i in 0..ncolors {
+        colors[i] = pack_color_rgb(rng.gen::<u8>(), rng.gen::<u8>(), rng.gen::<u8>());
+    }
 
     let rect_w = win_w / (2 * map_w);
     let rect_h = win_h / map_h;
-    for j in 0..map_h {
+
+    for frame in 0..360 {
+        let output_path = "./out/";
+        let ss = format!("{}{:05}", output_path, frame);
+        player_a += 2. * std::f64::consts::PI / 360.;
+
+        framebuffer = vec![pack_color_rgb(255, 255, 255); win_w * win_h]; //clear screen
+
         //draw the map
-        for i in 0..map_w {
-            if map[i + j * map_w] == " " {
-                continue;
-            } //skip empty spaces
-            let rect_x = i * rect_w;
-            let rect_y = j * rect_h;
-            draw_rectangle(
-                &mut framebuffer,
-                win_w,
-                win_h,
-                rect_x,
-                rect_y,
-                rect_w,
-                rect_h,
-                pack_color_rgb(0, 255, 255),
-            );
-        }
-    }
+        for j in 0..map_h {
+            for i in 0..map_w {
+                //skip empty spaces
+                if map[i + j * map_w] == ' ' {
+                    continue;
+                }
 
-    for i in 0..win_w / 2 {
-        //cast field of vision AND 3D view
-        let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
-        for t in 0..400 {
-            //since Rust doesn't allow step by float, remap so step==1
-            let t = t as f64 / 20.; //then transform back to original range
-
-            let cx = player_x + t * angle.cos();
-            let cy = player_y + t * angle.sin();
-            angle.sin();
-
-            let pix_x = (cx * rect_w as f64) as usize;
-            let pix_y = (cy * rect_h as f64) as usize;
-            //draw the visibility cone on the map
-            framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(255, 255, 255);
-
-            if map[cx as usize + cy as usize * map_w] != " " {
-                let column_height = (win_h as f64 / t) as usize;
+                let rect_x = i * rect_w;
+                let rect_y = j * rect_h;
+                let icolor: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
+                assert!(icolor < ncolors);
                 draw_rectangle(
                     &mut framebuffer,
                     win_w,
                     win_h,
-                    win_w / 2 + i,
-                    win_h / 2 - column_height / 2,
-                    1,
-                    column_height,
-                    pack_color_rgb(0, 255, 255),
+                    rect_x,
+                    rect_y,
+                    rect_w,
+                    rect_h,
+                    // pack_color_rgb(0, 255, 255),
+                    colors[icolor],
                 );
-                break;
             }
         }
+
+        for i in 0..win_w / 2 {
+            //cast field of vision AND 3D view
+            let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
+            for t in 0..2000 {
+                //since Rust doesn't allow step by float, remap so step==1
+                let t = t as f64 / 100.; //then transform back to original range
+
+                let cx = player_x + t * angle.cos();
+                let cy = player_y + t * angle.sin();
+
+                let pix_x = (cx * rect_w as f64) as usize;
+                let pix_y = (cy * rect_h as f64) as usize;
+                //draw the visibility cone on the map
+                framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(160, 160, 160);
+
+                if map[cx as usize + cy as usize * map_w] != ' ' {
+                    //hit a wall
+                    let icolor: usize =
+                        map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
+                    assert!(icolor < ncolors);
+                    let column_height = (win_h as f64 / t) as usize;
+                    draw_rectangle(
+                        &mut framebuffer,
+                        win_w,
+                        win_h,
+                        win_w / 2 + i,
+                        win_h / 2 - column_height / 2,
+                        1,
+                        column_height,
+                        colors[icolor],
+                    );
+                    break;
+                }
+            }
+        }
+
+        drop_ppm_image(ss.as_str(), &framebuffer, win_w, win_h)?;
     }
-
-    drop_ppm_image(filename, &framebuffer, win_w, win_h)?;
-
     Ok(())
 }
 
