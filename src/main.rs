@@ -60,10 +60,6 @@ fn draw_rectangle(
     h: usize,
     color: u32,
 ) {
-    // assert!(img.len() == img_w * img_h);
-    //move these asserts out of the loop for performance
-    // assert!(x + w < img_w && y + h < img_h);
-
     for i in 0..w {
         for j in 0..h {
             let cx = x + i;
@@ -108,17 +104,22 @@ fn main() -> std::io::Result<()> {
     map.remove(map_w * map_h - 1);
     map.remove(0);
 
-    // println!("{:?}", map);
     assert_eq!(map.len(), map_w * map_h);
 
     let player_x = 3.456;
     let player_y = 2.345;
+    let player_a: f64 = 1.523; //player view direction
 
     for j in 0..win_h {
         //fill screen with a color gradient
         for i in 0..win_w {
-            let r: u8 = (255.0 * (j as f32) / (win_h as f32)) as u8;
-            let g: u8 = (255.0 * (i as f32) / (win_w as f32)) as u8;
+            //for a "grid":
+            //let ncells = win_h / map_h;
+            //let r: u8 = (j * 256 / ncells) as u8;
+            //let g: u8 = (i * 256 / ncells) as u8;
+
+            let r: u8 = (255 * j / win_h) as u8;
+            let g: u8 = (255 * i / win_w) as u8;
             let b: u8 = 0;
             framebuffer[i + j * win_w] = pack_color_rgb(r, g, b);
         }
@@ -158,6 +159,22 @@ fn main() -> std::io::Result<()> {
         5,
         pack_color_rgb(255, 255, 255),
     );
+
+    //raycast sightline
+    for t in 0..400 {
+        //since Rust doesn't allow step by float, remap so step==1
+        let t = t as f64 / 20.; //then transform back to original range
+
+        let cx = player_x + t * player_a.cos();
+        let cy = player_y + t * player_a.sin();
+        if map[cx as usize + cy as usize * map_w] != " " {
+            break;
+        }
+
+        let pix_x = (cx * rect_w as f64) as usize;
+        let pix_y = (cy * rect_h as f64) as usize;
+        framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(255, 255, 255);
+    }
 
     drop_ppm_image(filename, &framebuffer, win_w, win_h)?;
 
