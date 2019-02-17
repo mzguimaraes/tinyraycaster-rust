@@ -111,6 +111,9 @@ fn main() -> std::io::Result<()> {
     // println!("{:?}", map);
     assert_eq!(map.len(), map_w * map_h);
 
+    let player_x = 3.456;
+    let player_y = 2.345;
+
     for j in 0..win_h {
         //fill screen with a color gradient
         for i in 0..win_w {
@@ -143,6 +146,18 @@ fn main() -> std::io::Result<()> {
             );
         }
     }
+
+    //draw player on map
+    draw_rectangle(
+        &mut framebuffer,
+        win_w,
+        win_h,
+        (rect_w as f64 * player_x) as usize,
+        (rect_h as f64 * player_y) as usize,
+        5,
+        5,
+        pack_color_rgb(255, 255, 255),
+    );
 
     drop_ppm_image(filename, &framebuffer, win_w, win_h)?;
 
