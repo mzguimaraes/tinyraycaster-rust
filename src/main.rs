@@ -53,6 +53,7 @@ fn drop_ppm_image(filename: &str, image: &Vec<u32>, w: usize, h: usize) -> std::
         output.write(&[r, g, b])?;
     }
     //output closes at end of scope
+    println!("Wrote image {}", filename);
     Ok(())
 }
 
@@ -182,7 +183,7 @@ fn main() -> std::io::Result<()> {
                     let icolor: usize =
                         map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
                     assert!(icolor < ncolors);
-                    let column_height = (win_h as f64 / t) as usize;
+                    let column_height = (win_h as f64 / (t * f64::cos(angle - player_a))) as usize;
                     draw_rectangle(
                         &mut framebuffer,
                         win_w,
