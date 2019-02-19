@@ -2,6 +2,9 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+
+extern crate image;
+
 extern crate rand;
 use rand::Rng;
 
@@ -13,7 +16,7 @@ fn pack_color_rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
     (b4 << 24) + (b3 << 16) + (b2 << 8) + b1
 }
 
-//rust does not have operator overloading
+//rust does not have function overloading
 fn pack_color_rgb(r: u8, g: u8, b: u8) -> u32 {
     pack_color_rgba(r, g, b, 255)
 }
@@ -82,6 +85,44 @@ fn draw_rectangle(
     }
 }
 
+fn load_texture<'a>(
+    filename: &str,
+    texture: &'a mut Vec<u32>,
+    tex_size: &mut usize,
+    tex_cnt: &mut usize,
+) -> Result<Box<Vec<u32>>, image::ImageError> {
+    let pixmap = image::open(filename)?
+        .as_rgba8()
+        .expect("Cannot open texture")
+        .to_owned();
+
+    // let (w, h) = pixmap.dimensions();
+    let w = pixmap.width() as usize;
+    let h = pixmap.height() as usize;
+
+    *tex_cnt = (w / h) as usize;
+    *tex_size = w as usize / *tex_cnt;
+    if w != h * *tex_cnt {
+        drop(texture);
+        return Err(image::ImageError::FormatError(String::from(
+            "Error: the texture file must contain N square textures packed horizontally",
+        )));
+    }
+
+    let mut texture = vec![0; (w * h) as usize];
+    let pixmap = pixmap.to_vec();
+    for j in 0..h {
+        for i in 0..w {
+            let r = pixmap[(i + j * w) * 4 + 0];
+            let g = pixmap[(i + j * w) * 4 + 1];
+            let b = pixmap[(i + j * w) * 4 + 2];
+            let a = pixmap[(i + j * w) * 4 + 3];
+            texture[i + j * w] = pack_color_rgba(r, g, b, a);
+        }
+    }
+    Ok(Box::new(texture))
+}
+
 fn main() -> std::io::Result<()> {
     let win_w: usize = 1024;
     let win_h: usize = 512;
@@ -127,80 +168,105 @@ fn main() -> std::io::Result<()> {
         colors[i] = pack_color_rgb(rng.gen::<u8>(), rng.gen::<u8>(), rng.gen::<u8>());
     }
 
+    let mut walltex: Box<Vec<u32>> = Box::new(Vec::new());
+    let mut walltex_size: usize = 0;
+    let mut walltex_cnt: usize = 0;
+    walltex = match load_texture(
+        "./walltex.png",
+        &mut walltex,
+        &mut walltex_size,
+        &mut walltex_cnt,
+    ) {
+        Ok(tex) => tex,
+        Err(e) => {
+            println!("error loading texture: {}", e);
+            Box::new(vec![pack_color_rgb(100, 100, 100), 64 * 64 * 6]) // default texture
+        }
+    };
+
     let rect_w = win_w / (2 * map_w);
     let rect_h = win_h / map_h;
 
-    for frame in 0..360 {
-        let output_path = "./out/";
-        let ss = format!("{}{:05}", output_path, frame);
-        player_a += 2. * std::f64::consts::PI / 360.;
+    // for frame in 0..360 {
+    //     let output_path = "./out/";
+    //     let ss = format!("{}{:05}", output_path, frame);
+    //     player_a += 2. * std::f64::consts::PI / 360.;
 
-        framebuffer = vec![pack_color_rgb(255, 255, 255); win_w * win_h]; //clear screen
+    //     framebuffer = vec![pack_color_rgb(255, 255, 255); win_w * win_h]; //clear screen
 
-        //draw the map
-        for j in 0..map_h {
-            for i in 0..map_w {
-                //skip empty spaces
-                if map[i + j * map_w] == ' ' {
-                    continue;
-                }
+    //draw the map
+    for j in 0..map_h {
+        for i in 0..map_w {
+            //skip empty spaces
+            if map[i + j * map_w] == ' ' {
+                continue;
+            }
 
-                let rect_x = i * rect_w;
-                let rect_y = j * rect_h;
-                let icolor: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
+            let rect_x = i * rect_w;
+            let rect_y = j * rect_h;
+            let icolor: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
+            assert!(icolor < ncolors);
+            draw_rectangle(
+                &mut framebuffer,
+                win_w,
+                win_h,
+                rect_x,
+                rect_y,
+                rect_w,
+                rect_h,
+                colors[icolor],
+            );
+        }
+    }
+
+    for i in 0..win_w / 2 {
+        //cast field of vision AND 3D view
+        let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
+        for t in 0..2000 {
+            //since Rust doesn't allow step by float, remap so step==1
+            let t = t as f64 / 100.; //then transform back to original range
+
+            let cx = player_x + t * angle.cos();
+            let cy = player_y + t * angle.sin();
+
+            let pix_x = (cx * rect_w as f64) as usize;
+            let pix_y = (cy * rect_h as f64) as usize;
+            //draw the visibility cone on the map
+            framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(160, 160, 160);
+
+            if map[cx as usize + cy as usize * map_w] != ' ' {
+                //hit a wall
+                let icolor: usize =
+                    map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
                 assert!(icolor < ncolors);
+                let column_height = (win_h as f64 / (t * f64::cos(angle - player_a))) as usize;
                 draw_rectangle(
                     &mut framebuffer,
                     win_w,
                     win_h,
-                    rect_x,
-                    rect_y,
-                    rect_w,
-                    rect_h,
-                    // pack_color_rgb(0, 255, 255),
+                    win_w / 2 + i,
+                    win_h / 2 - column_height / 2,
+                    1,
+                    column_height,
                     colors[icolor],
                 );
+                break;
             }
         }
-
-        for i in 0..win_w / 2 {
-            //cast field of vision AND 3D view
-            let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
-            for t in 0..2000 {
-                //since Rust doesn't allow step by float, remap so step==1
-                let t = t as f64 / 100.; //then transform back to original range
-
-                let cx = player_x + t * angle.cos();
-                let cy = player_y + t * angle.sin();
-
-                let pix_x = (cx * rect_w as f64) as usize;
-                let pix_y = (cy * rect_h as f64) as usize;
-                //draw the visibility cone on the map
-                framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(160, 160, 160);
-
-                if map[cx as usize + cy as usize * map_w] != ' ' {
-                    //hit a wall
-                    let icolor: usize =
-                        map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
-                    assert!(icolor < ncolors);
-                    let column_height = (win_h as f64 / (t * f64::cos(angle - player_a))) as usize;
-                    draw_rectangle(
-                        &mut framebuffer,
-                        win_w,
-                        win_h,
-                        win_w / 2 + i,
-                        win_h / 2 - column_height / 2,
-                        1,
-                        column_height,
-                        colors[icolor],
-                    );
-                    break;
-                }
-            }
-        }
-
-        drop_ppm_image(ss.as_str(), &framebuffer, win_w, win_h)?;
     }
+
+    let texid: usize = 4;
+    for i in 0..walltex_size {
+        for j in 0..walltex_size {
+            framebuffer[i + j * win_w] =
+                walltex[i + texid * walltex_size + j * walltex_size * walltex_cnt];
+        }
+    }
+
+    drop_ppm_image("./out.ppm", &framebuffer, win_w, win_h)?;
+
+    // drop_ppm_image(ss.as_str(), &framebuffer, win_w, win_h)?;
+    // }
     Ok(())
 }
 
