@@ -5,5 +5,4 @@ authors = ["mzguimaraes <mzg218@nyu.edu>"]
 edition = "2018"
 
 [dependencies]
-rand = "0.6.5"
 image = "*"

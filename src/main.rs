@@ -5,9 +5,6 @@ use std::path::Path;
 
 extern crate image;
 
-extern crate rand;
-use rand::Rng;
-
 fn pack_color_rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
     let b1 = r as u32;
     let b2 = g as u32;
@@ -85,9 +82,9 @@ fn draw_rectangle(
     }
 }
 
-fn load_texture<'a>(
+fn load_texture(
     filename: &str,
-    texture: &'a mut Vec<u32>,
+    texture: &mut Vec<u32>,
     tex_size: &mut usize,
     tex_cnt: &mut usize,
 ) -> Result<Box<Vec<u32>>, image::ImageError> {
@@ -96,7 +93,6 @@ fn load_texture<'a>(
         .expect("Cannot open texture")
         .to_owned();
 
-    // let (w, h) = pixmap.dimensions();
     let w = pixmap.width() as usize;
     let h = pixmap.height() as usize;
 
@@ -123,10 +119,32 @@ fn load_texture<'a>(
     Ok(Box::new(texture))
 }
 
+fn texture_column(
+    img: &Vec<u32>,
+    texsize: usize,
+    ntextures: usize,
+    texid: usize,
+    texcoord: usize,
+    column_height: usize,
+) -> Vec<u32> {
+    let img_w = texsize * ntextures;
+    let img_h = texsize;
+    assert!(img.len() == img_w * img_h && texcoord < texsize && texid < ntextures);
+    let mut column = vec![0; column_height];
+
+    for y in 0..column_height {
+        let pix_x = texid * texsize + texcoord;
+        let pix_y = (y * texsize) / column_height;
+        column[y] = img[pix_x + pix_y * img_w];
+    }
+
+    column
+}
+
 fn main() -> std::io::Result<()> {
     let win_w: usize = 1024;
     let win_h: usize = 512;
-    let mut framebuffer: Vec<u32> = vec![pack_color_rgb(60, 60, 60); win_w * win_h];
+    let mut framebuffer: Vec<u32> = vec![pack_color_rgb(255, 255, 255); win_w * win_h];
 
     let map_w: usize = 16;
     let map_h: usize = 16;
@@ -137,9 +155,9 @@ fn main() -> std::io::Result<()> {
                           0     0  1110000\
                           0     3        0\
                           0   10000      0\
-                          0   0   11100  0\
-                          0   0   0      0\
-                          0   0   1  00000\
+                          0   3   11100  0\
+                          5   4   0      0\
+                          5   4   1  00000\
                           0       1      0\
                           2       1      0\
                           0       0      0\
@@ -161,13 +179,6 @@ fn main() -> std::io::Result<()> {
     let mut player_a: f64 = 1.523; //player view direction
     let fov = std::f64::consts::PI / 3.;
 
-    let ncolors: usize = 10;
-    let mut colors: Vec<u32> = vec![0; ncolors];
-    let mut rng = rand::thread_rng();
-    for i in 0..ncolors {
-        colors[i] = pack_color_rgb(rng.gen::<u8>(), rng.gen::<u8>(), rng.gen::<u8>());
-    }
-
     let mut walltex: Box<Vec<u32>> = Box::new(Vec::new());
     let mut walltex_size: usize = 0;
     let mut walltex_cnt: usize = 0;
@@ -183,6 +194,11 @@ fn main() -> std::io::Result<()> {
             Box::new(vec![pack_color_rgb(100, 100, 100), 64 * 64 * 6]) // default texture
         }
     };
+
+    //make immutable
+    let walltex = walltex;
+    let walltex_size = walltex_size;
+    let walltex_cnt = walltex_cnt;
 
     let rect_w = win_w / (2 * map_w);
     let rect_h = win_h / map_h;
@@ -204,8 +220,8 @@ fn main() -> std::io::Result<()> {
 
             let rect_x = i * rect_w;
             let rect_y = j * rect_h;
-            let icolor: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
-            assert!(icolor < ncolors);
+            let texid: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
+            assert!(texid < walltex_cnt);
             draw_rectangle(
                 &mut framebuffer,
                 win_w,
@@ -214,7 +230,7 @@ fn main() -> std::io::Result<()> {
                 rect_y,
                 rect_w,
                 rect_h,
-                colors[icolor],
+                walltex[texid * walltex_size],
             );
         }
     }
@@ -229,39 +245,71 @@ fn main() -> std::io::Result<()> {
             let cx = player_x + t * angle.cos();
             let cy = player_y + t * angle.sin();
 
-            let pix_x = (cx * rect_w as f64) as usize;
-            let pix_y = (cy * rect_h as f64) as usize;
+            let mut pix_x = (cx * rect_w as f64) as i32;
+            let mut pix_y = (cy * rect_h as f64) as i32;
             //draw the visibility cone on the map
-            framebuffer[pix_x + pix_y * win_w] = pack_color_rgb(160, 160, 160);
+            framebuffer[pix_x as usize + pix_y as usize * win_w] = pack_color_rgb(160, 160, 160);
 
             if map[cx as usize + cy as usize * map_w] != ' ' {
                 //hit a wall
-                let icolor: usize =
+                let texid: usize =
                     map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
-                assert!(icolor < ncolors);
+                assert!(texid < walltex_cnt);
                 let column_height = (win_h as f64 / (t * f64::cos(angle - player_a))) as usize;
-                draw_rectangle(
-                    &mut framebuffer,
-                    win_w,
-                    win_h,
-                    win_w / 2 + i,
-                    win_h / 2 - column_height / 2,
-                    1,
+                // draw_rectangle(
+                //     &mut framebuffer,
+                //     win_w,
+                //     win_h,
+                //     win_w / 2 + i,
+                //     win_h / 2 - column_height / 2,
+                //     1,
+                //     column_height,
+                //     walltex[texid * walltex_size],
+                // );
+
+                let hitx = cx - f64::floor(cx + 0.5);
+                let hity = cy - f64::floor(cy + 0.5);
+                let mut x_texcoord: i64 = (hitx * walltex_size as f64) as i64;
+                if f64::abs(hity) > f64::abs(hitx) {
+                    x_texcoord = (hity * walltex_size as f64) as i64;
+                }
+
+                if x_texcoord < 0 {
+                    x_texcoord += walltex_size as i64;
+                }
+                assert!(x_texcoord >= 0 && x_texcoord < walltex_size as i64);
+
+                let column = texture_column(
+                    &walltex,
+                    walltex_size,
+                    walltex_cnt,
+                    texid,
+                    x_texcoord as usize,
                     column_height,
-                    colors[icolor],
                 );
+                pix_x = win_w as i32 / 2 + i as i32;
+                for j in 0..column_height {
+                    pix_y = j as i32 + win_h as i32 / 2 - column_height as i32 / 2;
+                    if pix_y < 0 || pix_y >= win_h as i32 {
+                        continue;
+                    }
+
+                    framebuffer[pix_x as usize + pix_y as usize * win_w] = column[j];
+                }
+
                 break;
             }
         }
     }
 
-    let texid: usize = 4;
-    for i in 0..walltex_size {
-        for j in 0..walltex_size {
-            framebuffer[i + j * win_w] =
-                walltex[i + texid * walltex_size + j * walltex_size * walltex_cnt];
-        }
-    }
+    // draw the 4th texture on the screen (test)
+    // let texid: usize = 4;
+    // for i in 0..walltex_size {
+    //     for j in 0..walltex_size {
+    //         framebuffer[i + j * win_w] =
+    //             walltex[i + texid * walltex_size + j * walltex_size * walltex_cnt];
+    //     }
+    // }
 
     drop_ppm_image("./out.ppm", &framebuffer, win_w, win_h)?;
 
