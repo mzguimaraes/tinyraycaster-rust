@@ -4,5 +4,13 @@ version = "0.1.0"
 authors = ["mzguimaraes <mzg218@nyu.edu>"]
 edition = "2018"
 
+[lib]
+name = "doom_iow"
+path = "src/lib.rs"
+
+[[bin]]
+name = "doom_iow_bin"
+path = "src/main.rs"
+
 [dependencies]
 image = "*"
