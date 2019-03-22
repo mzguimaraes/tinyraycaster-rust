@@ -1,180 +1,107 @@
 extern crate doom_iow;
 use doom_iow::*;
 
-fn main() -> std::io::Result<()> {
-    let win_w: usize = 1024;
-    let win_h: usize = 512;
-    let mut framebuffer: Vec<u32> = vec![utils::pack_color_rgb(255, 255, 255); win_w * win_h];
+fn wall_x_texcoord(x: f32, y: f32, tex_walls: &Texture) -> i32 {
+    let hitx = x - f32::floor(x + 0.5);
+    let hity = y - f32::floor(y + 0.5);
+    let mut x_texcoord: i32 = (hitx * tex_walls.size as f32) as i32;
+    if f32::abs(hity) > f32::abs(hitx) {
+        x_texcoord = (hity * tex_walls.size as f32) as i32;
+    }
 
-    let map_w: usize = 16;
-    let map_h: usize = 16;
-    let map: Vec<char> = "0000222222220000\
-                          1              0\
-                          1      11111   0\
-                          1     0        0\
-                          0     0  1110000\
-                          0     3        0\
-                          0   10000      0\
-                          0   3   11100  0\
-                          5   4   0      0\
-                          5   4   1  00000\
-                          0       1      0\
-                          2       1      0\
-                          0       0      0\
-                          0 0000000      0\
-                          0              0\
-                          0002222222200000"
-        .chars()
-        //.split("")
-        .collect(); // our game map
-                    //strip out null chars
-                    // println!("{:?}", map);
-                    //map.remove(map_w * map_h - 1);
-                    //map.remove(0);
+    if x_texcoord < 0 {
+        x_texcoord += tex_walls.size as i32;
+    }
+    assert!(x_texcoord >= 0 && x_texcoord < tex_walls.size as i32);
+    x_texcoord
+}
 
-    assert_eq!(map.len(), map_w * map_h);
-
-    let player_x = 3.456;
-    let player_y = 2.345;
-    let mut player_a: f64 = 1.523; //player view direction
-    let fov = std::f64::consts::PI / 3.;
-
-    let mut walltex: Box<Vec<u32>> = Box::new(Vec::new());
-    let mut walltex_size: usize = 0;
-    let mut walltex_cnt: usize = 0;
-    walltex = match load_texture(
-        "./walltex.png",
-        &mut walltex,
-        &mut walltex_size,
-        &mut walltex_cnt,
-    ) {
-        Ok(tex) => tex,
-        Err(e) => {
-            println!("error loading texture: {}", e);
-            Box::new(vec![utils::pack_color_rgb(100, 100, 100), 64 * 64 * 6]) // default texture
+// fn main() -> std::io::Result<()> {
+fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture) -> Result<(), FrameError> {
+    fb.clear(utils::pack_color_rgb(25, 25, 25));
+    let rect_w = fb.w/(map.w*2); //size of one map cell on the screen
+    let rect_h = fb.h/map.h;
+    for j in 0..map.h {
+        for i in 0..map.w {
+            if map.is_empty(i, j) {
+                continue; //skip empty spaces
+            }
+            let rect_x = i * rect_w;
+            let rect_y = j * rect_h;
+            let texid = map.get(i, j).expect("i, j not in map range"); 
+            fb.draw_rectangle(rect_x, rect_y, rect_w, rect_h, tex_walls.get(0, 0, texid).expect("no texture at texid"))?;
         }
-    };
+    }
+    
+    for i in 0..fb.w / 2 {
+        //cast field of vision AND 3D view
+        let angle: f32 = player.a - player.fov / 2. + player.fov * i as f32 / (fb.w / 2) as f32;
+        for t in 0..2000 {
+            //since Rust doesn't allow step by float, remap so step==1
+            let t = t as f32 / 100.; //then transform back to original range
 
-    //make immutable
-    let walltex = walltex;
-    let walltex_size = walltex_size;
-    let walltex_cnt = walltex_cnt;
+            let x = player.x + t * angle.cos();
+            let y = player.y + t * angle.sin();
 
-    let rect_w = win_w / (2 * map_w);
-    let rect_h = win_h / map_h;
+            //draw the visibility cone on the map
+            fb.set_pixel((x * rect_w as f32) as u32, (y * rect_h as f32) as u32, utils::pack_color_rgb(160,160,160)).expect("Could not set pixel");
 
-    // for frame in 0..360 {
-    //     let output_path = "./out/";
-    //     let ss = format!("{}{:05}", output_path, frame);
-    //     player_a += 2. * std::f64::consts::PI / 360.;
-
-    //     framebuffer = vec![pack_color_rgb(255, 255, 255); win_w * win_h]; //clear screen
-
-    //draw the map
-    for j in 0..map_h {
-        for i in 0..map_w {
-            //skip empty spaces
-            if map[i + j * map_w] == ' ' {
+            if map.is_empty(x as u32, y as u32) {
                 continue;
             }
 
-            let rect_x = i * rect_w;
-            let rect_y = j * rect_h;
-            let texid: usize = map[i + j * map_w].to_digit(10).unwrap() as usize;
-            assert!(texid < walltex_cnt);
-            draw_rectangle(
-                &mut framebuffer,
-                win_w,
-                win_h,
-                rect_x,
-                rect_y,
-                rect_w,
-                rect_h,
-                walltex[texid * walltex_size],
-            );
-        }
-    }
+            //if this map tile isn't empty, we've hit a wall
+            //hit a wall
+            let texid = map.get(x as u32, y as u32).expect("Cannot index this map tile");
+            assert!(texid < tex_walls.count);
+            let column_height = (fb.h as f32 / (t * f32::cos(angle - player.a))) as u32;
+            let x_texcoord = wall_x_texcoord(x , y , tex_walls);
 
-    for i in 0..win_w / 2 {
-        //cast field of vision AND 3D view
-        let angle: f64 = player_a - fov / 2. + fov * i as f64 / (win_w / 2) as f64;
-        for t in 0..2000 {
-            //since Rust doesn't allow step by float, remap so step==1
-            let t = t as f64 / 100.; //then transform back to original range
+            let column = tex_walls.get_scaled_column(texid, x_texcoord as u32, column_height).expect("Cannot retrieve scaled column");
 
-            let cx = player_x + t * angle.cos();
-            let cy = player_y + t * angle.sin();
-
-            let mut pix_x = (cx * rect_w as f64) as i32;
-            let mut pix_y = (cy * rect_h as f64) as i32;
-            //draw the visibility cone on the map
-            framebuffer[pix_x as usize + pix_y as usize * win_w] = utils::pack_color_rgb(160, 160, 160);
-
-            if map[cx as usize + cy as usize * map_w] != ' ' {
-                //hit a wall
-                let texid: usize =
-                    map[cx as usize + cy as usize * map_w].to_digit(10).unwrap() as usize;
-                assert!(texid < walltex_cnt);
-                let column_height = (win_h as f64 / (t * f64::cos(angle - player_a))) as usize;
-                // draw_rectangle(
-                //     &mut framebuffer,
-                //     win_w,
-                //     win_h,
-                //     win_w / 2 + i,
-                //     win_h / 2 - column_height / 2,
-                //     1,
-                //     column_height,
-                //     walltex[texid * walltex_size],
-                // );
-
-                let hitx = cx - f64::floor(cx + 0.5);
-                let hity = cy - f64::floor(cy + 0.5);
-                let mut x_texcoord: i64 = (hitx * walltex_size as f64) as i64;
-                if f64::abs(hity) > f64::abs(hitx) {
-                    x_texcoord = (hity * walltex_size as f64) as i64;
+            let pix_x = i + fb.w / 2; 
+            for j in 0..column_height {
+                let pix_y = j + fb.h / 2 - column_height / 2;
+                if pix_y<fb.h {
+                    fb.set_pixel(pix_x, pix_y, column[j as usize]).expect("Could not set pixel");
                 }
-
-                if x_texcoord < 0 {
-                    x_texcoord += walltex_size as i64;
-                }
-                assert!(x_texcoord >= 0 && x_texcoord < walltex_size as i64);
-
-                let column = texture_column(
-                    &walltex,
-                    walltex_size,
-                    walltex_cnt,
-                    texid,
-                    x_texcoord as usize,
-                    column_height,
-                );
-                pix_x = win_w as i32 / 2 + i as i32;
-                for j in 0..column_height {
-                    pix_y = j as i32 + win_h as i32 / 2 - column_height as i32 / 2;
-                    if pix_y < 0 || pix_y >= win_h as i32 {
-                        continue;
-                    }
-
-                    framebuffer[pix_x as usize + pix_y as usize * win_w] = column[j];
-                }
-
-                break;
             }
+            break;
         }
     }
+    Ok(())
+}
 
-    // draw the 4th texture on the screen (test)
-    // let texid: usize = 4;
-    // for i in 0..walltex_size {
-    //     for j in 0..walltex_size {
-    //         framebuffer[i + j * win_w] =
-    //             walltex[i + texid * walltex_size + j * walltex_size * walltex_cnt];
-    //     }
-    // }
+fn main() -> std::io::Result<()> {
 
-    utils::drop_ppm_image("./out.ppm", &framebuffer, win_w, win_h)?;
+    let mut fb = Framebuffer::new(1024, 512);
 
-    // drop_ppm_image(ss.as_str(), &framebuffer, win_w, win_h)?;
-    // }
+    let mut player = Player{
+        x: 3.456,
+        y: 2.345,
+        a: 1.523,
+        fov: std::f32::consts::PI / 3.,
+    };
+
+    let map = match Map::init(16, 16) {
+        Ok(m) => m,
+        Err(_) => {
+            println!("bad parameters given to map");
+            panic!("Could not open map");
+        }
+    };
+
+    let tex_walls = Texture::new("./walltex.png").expect("Could not open texture in main");
+
+    for frame in 0..360 {
+    // for frame in 0..1 {
+        let output_path = "./out/";
+        let ss = format!("{}{:05}.ppm", output_path, frame);
+        player.a += 2. * std::f32::consts::PI / 360.;
+        render(&mut fb, &map, &player, &tex_walls).expect("Could not render image");
+        utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize).expect("Could not drop image");
+        println!("Rendered frame {}", frame);
+    }
     Ok(())
 }
 
