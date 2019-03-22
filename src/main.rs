@@ -4,23 +4,31 @@ use doom_iow::*;
 fn wall_x_texcoord(x: f32, y: f32, tex_walls: &Texture) -> i32 {
     let hitx = x - f32::floor(x + 0.5);
     let hity = y - f32::floor(y + 0.5);
-    let mut x_texcoord: i32 = (hitx * tex_walls.size as f32) as i32;
-    if f32::abs(hity) > f32::abs(hitx) {
-        x_texcoord = (hity * tex_walls.size as f32) as i32;
-    }
 
-    if x_texcoord < 0 {
-        x_texcoord += tex_walls.size as i32;
-    }
+    let x_texcoord: i32 = if f32::abs(hity) > f32::abs(hitx) {
+        (hity * tex_walls.size as f32) as i32
+    } else {
+        (hitx * tex_walls.size as f32) as i32
+    };
+    let x_texcoord = if x_texcoord < 0 {
+        x_texcoord + tex_walls.size as i32
+    } else {
+        x_texcoord
+    };
+
     assert!(x_texcoord >= 0 && x_texcoord < tex_walls.size as i32);
     x_texcoord
 }
 
-// fn main() -> std::io::Result<()> {
-fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture) -> Result<(), FrameError> {
+fn render(
+    fb: &mut Framebuffer,
+    map: &Map,
+    player: &Player,
+    tex_walls: &Texture,
+) -> Result<(), FrameError> {
     fb.clear(utils::pack_color_rgb(25, 25, 25));
-    let rect_w = fb.w/(map.w*2); //size of one map cell on the screen
-    let rect_h = fb.h/map.h;
+    let rect_w = fb.w / (map.w * 2); //size of one map cell on the screen
+    let rect_h = fb.h / map.h;
     for j in 0..map.h {
         for i in 0..map.w {
             if map.is_empty(i, j) {
@@ -28,11 +36,17 @@ fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture)
             }
             let rect_x = i * rect_w;
             let rect_y = j * rect_h;
-            let texid = map.get(i, j).expect("i, j not in map range"); 
-            fb.draw_rectangle(rect_x, rect_y, rect_w, rect_h, tex_walls.get(0, 0, texid).expect("no texture at texid"))?;
+            let texid = map.get(i, j).expect("i, j not in map range");
+            fb.draw_rectangle(
+                rect_x,
+                rect_y,
+                rect_w,
+                rect_h,
+                tex_walls.get(0, 0, texid).expect("no texture at texid"),
+            )?;
         }
     }
-    
+
     for i in 0..fb.w / 2 {
         //cast field of vision AND 3D view
         let angle: f32 = player.a - player.fov / 2. + player.fov * i as f32 / (fb.w / 2) as f32;
@@ -44,7 +58,12 @@ fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture)
             let y = player.y + t * angle.sin();
 
             //draw the visibility cone on the map
-            fb.set_pixel((x * rect_w as f32) as u32, (y * rect_h as f32) as u32, utils::pack_color_rgb(160,160,160)).expect("Could not set pixel");
+            fb.set_pixel(
+                (x * rect_w as f32) as u32,
+                (y * rect_h as f32) as u32,
+                utils::pack_color_rgb(160, 160, 160),
+            )
+            .expect("Could not set pixel");
 
             if map.is_empty(x as u32, y as u32) {
                 continue;
@@ -52,18 +71,23 @@ fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture)
 
             //if this map tile isn't empty, we've hit a wall
             //hit a wall
-            let texid = map.get(x as u32, y as u32).expect("Cannot index this map tile");
+            let texid = map
+                .get(x as u32, y as u32)
+                .expect("Cannot index this map tile");
             assert!(texid < tex_walls.count);
             let column_height = (fb.h as f32 / (t * f32::cos(angle - player.a))) as u32;
-            let x_texcoord = wall_x_texcoord(x , y , tex_walls);
+            let x_texcoord = wall_x_texcoord(x, y, tex_walls);
 
-            let column = tex_walls.get_scaled_column(texid, x_texcoord as u32, column_height).expect("Cannot retrieve scaled column");
+            let column = tex_walls
+                .get_scaled_column(texid, x_texcoord as u32, column_height)
+                .expect("Cannot retrieve scaled column");
 
-            let pix_x = i + fb.w / 2; 
+            let pix_x = i + fb.w / 2;
             for j in 0..column_height {
                 let pix_y = j + fb.h / 2 - column_height / 2;
-                if pix_y<fb.h {
-                    fb.set_pixel(pix_x, pix_y, column[j as usize]).expect("Could not set pixel");
+                if pix_y < fb.h {
+                    fb.set_pixel(pix_x, pix_y, column[j as usize])
+                        .expect("Could not set pixel");
                 }
             }
             break;
@@ -73,10 +97,9 @@ fn render(fb: &mut Framebuffer, map: &Map, player: &Player, tex_walls: &Texture)
 }
 
 fn main() -> std::io::Result<()> {
-
     let mut fb = Framebuffer::new(1024, 512);
 
-    let mut player = Player{
+    let mut player = Player {
         x: 3.456,
         y: 2.345,
         a: 1.523,
@@ -94,12 +117,12 @@ fn main() -> std::io::Result<()> {
     let tex_walls = Texture::new("./walltex.png").expect("Could not open texture in main");
 
     for frame in 0..360 {
-    // for frame in 0..1 {
         let output_path = "./out/";
         let ss = format!("{}{:05}.ppm", output_path, frame);
         player.a += 2. * std::f32::consts::PI / 360.;
         render(&mut fb, &map, &player, &tex_walls).expect("Could not render image");
-        utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize).expect("Could not drop image");
+        utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
+            .expect("Could not drop image");
         println!("Rendered frame {}", frame);
     }
     Ok(())
@@ -127,7 +150,7 @@ mod tests {
         let mut b = 0;
         let mut a = 0;
 
-        utils::unpack_color(&packed, &mut r, &mut g, &mut b, &mut a);
+        utils::unpack_color(packed, &mut r, &mut g, &mut b, &mut a);
 
         assert_eq!(vec![2, 4, 8, 16], vec![r, g, b, a]);
     }
@@ -146,7 +169,7 @@ mod tests {
         let mut bc = 0;
         let mut ac = 0;
 
-        utils::unpack_color(&color, &mut rc, &mut gc, &mut bc, &mut ac);
+        utils::unpack_color(color, &mut rc, &mut gc, &mut bc, &mut ac);
 
         assert_eq!(vec![r, g, b, a], vec![rc, gc, bc, ac]);
     }

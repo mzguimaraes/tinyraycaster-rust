@@ -1,13 +1,9 @@
-// pub mod textures {
-//     extern crate image;
-//     use crate::utils;
-
 pub struct Texture {
     pub img_w: u32,
     pub img_h: u32,
     pub count: u32,
     pub size: u32,
-    img: Box<Vec<u32>>,
+    img: Vec<u32>,
 }
 
 impl Texture {
@@ -32,8 +28,8 @@ impl Texture {
             img_w: w,
             img_h: h,
             count: ntextures,
-            size: size,
-            img: Box::new(pixmap),
+            size,
+            img: pixmap,
         })
     }
 
@@ -62,9 +58,7 @@ impl Texture {
         Some(column)
     }
 }
-// }
 
-// pub mod map {
 pub struct Map {
     layout: Vec<char>,
     pub w: u32,
@@ -95,15 +89,14 @@ impl Map {
                                  0002222222200000"
             .chars()
             .collect();
-        match width * height == layout.len() as u32 {
-            true => Ok(Map {
-                layout: layout,
+        if width * height == layout.len() as u32 {
+            Ok(Map {
+                layout,
                 w: width,
                 h: height,
-            }),
-            false => Err(
-                MapError::BadParameters
-            ),
+            })
+        } else {
+            Err(MapError::BadParameters)
         }
     }
 
@@ -112,12 +105,10 @@ impl Map {
     }
 
     pub fn is_empty(&self, i: u32, j: u32) -> bool {
-        self.layout.get((i + j * self.w) as usize).unwrap().to_owned() == ' '
+        self.layout[(i + j * self.w) as usize] == ' '
     }
 }
-// }
 
-// pub mod framebuffer {
 pub struct Framebuffer {
     pub w: u32,
     pub h: u32,
@@ -131,10 +122,10 @@ pub enum FrameError {
 
 impl Framebuffer {
     pub fn new(width: u32, height: u32) -> Framebuffer {
-        Framebuffer{
+        Framebuffer {
             w: width,
             h: height,
-            img: vec![utils::pack_color_rgb(255, 255, 255); (width*height) as usize]
+            img: vec![utils::pack_color_rgb(255, 255, 255); (width * height) as usize],
         }
     }
 
@@ -172,16 +163,13 @@ impl Framebuffer {
         Ok(())
     }
 }
-// }
 
-// pub mod player {
 pub struct Player {
     pub x: f32,
     pub y: f32,
     pub a: f32,
     pub fov: f32,
 }
-// }
 
 pub mod utils {
     use std::fs;
@@ -190,10 +178,10 @@ pub mod utils {
     use std::path::Path;
 
     pub fn pack_color_rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
-        let b1 = r as u32;
-        let b2 = g as u32;
-        let b3 = b as u32;
-        let b4 = a as u32;
+        let b1 = u32::from(r);
+        let b2 = u32::from(g);
+        let b3 = u32::from(b);
+        let b4 = u32::from(a);
         (b4 << 24) + (b3 << 16) + (b2 << 8) + b1
     }
 
@@ -202,7 +190,7 @@ pub mod utils {
         pack_color_rgba(r, g, b, 255)
     }
 
-    pub fn unpack_color(color: &u32, r: &mut u8, g: &mut u8, b: &mut u8, a: &mut u8) {
+    pub fn unpack_color(color: u32, r: &mut u8, g: &mut u8, b: &mut u8, a: &mut u8) {
         *r = (color & 255) as u8; //keep last 8 bits
         *g = (color.rotate_right(8) & 255) as u8;
         *b = (color.rotate_right(16) & 255) as u8;
@@ -211,7 +199,8 @@ pub mod utils {
 
     pub fn drop_ppm_image(
         filename: &str,
-        image: &Vec<u32>,
+        // imae: &Vec<u32>,
+        image: &[u32],
         w: usize,
         h: usize,
     ) -> std::io::Result<()> {
@@ -224,17 +213,17 @@ pub mod utils {
         let header = format!("P6\n{} {}\n255\n", w, h);
 
         output
-            .write(header.as_bytes())
+            .write_all(header.as_bytes())
             .expect("cannot write header");
 
-        for i in 0..w * h {
+        for pixel in image.iter().take(w * h) {
             let mut r = 0;
             let mut g = 0;
             let mut b = 0;
             let mut a = 0;
-            unpack_color(&image[i], &mut r, &mut g, &mut b, &mut a);
+            unpack_color(*pixel, &mut r, &mut g, &mut b, &mut a);
 
-            output.write(&[r, g, b])?;
+            output.write_all(&[r, g, b])?;
         }
         //output closes at end of scope
         println!("Wrote image {}", filename);
