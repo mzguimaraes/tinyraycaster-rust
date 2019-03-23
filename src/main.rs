@@ -1,6 +1,8 @@
 extern crate doom_iow;
 use doom_iow::*;
 
+use std::process::Command;
+
 fn wall_x_texcoord(x: f32, y: f32, tex_walls: &Texture) -> i32 {
     let hitx = x - f32::floor(x + 0.5);
     let hity = y - f32::floor(y + 0.5);
@@ -26,7 +28,7 @@ fn render(
     player: &Player,
     tex_walls: &Texture,
 ) -> Result<(), FrameError> {
-    fb.clear(utils::pack_color_rgb(25, 25, 25));
+    fb.clear(utils::pack_color_rgb(249, 209, 152));
     let rect_w = fb.w / (map.w * 2); //size of one map cell on the screen
     let rect_h = fb.h / map.h;
     for j in 0..map.h {
@@ -97,6 +99,19 @@ fn render(
 }
 
 fn main() -> std::io::Result<()> {
+    //clear the /out folder
+    Command::new("rm")
+        .arg("-rf")
+        .arg("out/")
+        .output()
+        .expect("failed to clear out directory");
+    
+    //create new /out folder
+    Command::new("mkdir")
+            .arg("out")
+            .output()
+            .expect("failed to create directory");
+
     let mut fb = Framebuffer::new(1024, 512);
 
     let mut player = Player {
@@ -123,8 +138,20 @@ fn main() -> std::io::Result<()> {
         render(&mut fb, &map, &player, &tex_walls).expect("Could not render image");
         utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
             .expect("Could not drop image");
-        println!("Rendered frame {}", frame);
     }
+
+    println!("Rendered all frames, collecting into gif...");
+    let output = Command::new("convert")
+                        .args(&["-delay", "10", "-loop", "0", "*.ppm", "rendered.gif"])
+                        .current_dir("out/")
+                        .output()
+                        .expect("Could not start process");
+
+    println!("Status: {}", output.status);
+    println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+    println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+    println!("done");
+
     Ok(())
 }
 
