@@ -171,6 +171,18 @@ pub struct Player {
     pub fov: f32,
 }
 
+pub struct Sprite {
+    pub x: f32,
+    pub y: f32,
+    tex_id: u32,
+}
+
+impl Sprite {
+    pub fn new(x: f32, y: f32, tex_id: u32) -> Sprite {
+        Sprite { x, y, tex_id }
+    }
+}
+
 pub mod utils {
     use std::fs;
     use std::fs::File;

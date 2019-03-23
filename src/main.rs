@@ -3,14 +3,14 @@ use doom_iow::*;
 
 use std::process::Command;
 
-fn wall_x_texcoord(x: f32, y: f32, tex_walls: &Texture) -> i32 {
-    let hitx = x - f32::floor(x + 0.5);
-    let hity = y - f32::floor(y + 0.5);
+fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
+    let x = hitx - f32::floor(hitx + 0.5);
+    let y = hity - f32::floor(hity + 0.5);
 
-    let x_texcoord: i32 = if f32::abs(hity) > f32::abs(hitx) {
-        (hity * tex_walls.size as f32) as i32
+    let x_texcoord: i32 = if f32::abs(y) > f32::abs(x) {
+        (y * tex_walls.size as f32) as i32
     } else {
-        (hitx * tex_walls.size as f32) as i32
+        (x * tex_walls.size as f32) as i32
     };
     let x_texcoord = if x_texcoord < 0 {
         x_texcoord + tex_walls.size as i32
@@ -22,10 +22,24 @@ fn wall_x_texcoord(x: f32, y: f32, tex_walls: &Texture) -> i32 {
     x_texcoord
 }
 
+fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(), FrameError> {
+    //(rect_w, rect_h) == size of one map tile
+    let rect_w = (fb.w / (map.w * 2)) as f32;
+    let rect_h = (fb.h / map.h) as f32;
+    fb.draw_rectangle(
+        (sprite.x * rect_w - 3.0) as u32,
+        (sprite.y * rect_h - 3.0) as u32,
+        6,
+        6,
+        utils::pack_color_rgb(255, 0, 0),
+    )
+}
+
 fn render(
-    fb: &mut Framebuffer,
+    mut fb: &mut Framebuffer,
     map: &Map,
     player: &Player,
+    sprites: &Vec<Sprite>,
     tex_walls: &Texture,
 ) -> Result<(), FrameError> {
     fb.clear(utils::pack_color_rgb(249, 209, 152));
@@ -77,7 +91,10 @@ fn render(
                 .get(x as u32, y as u32)
                 .expect("Cannot index this map tile");
             assert!(texid < tex_walls.count);
-            let column_height = (fb.h as f32 / (t * f32::cos(angle - player.a))) as u32;
+
+            let distance = t * f32::cos(angle - player.a);
+            let column_height = (fb.h as f32 / distance) as u32;
+
             let x_texcoord = wall_x_texcoord(x, y, tex_walls);
 
             let column = tex_walls
@@ -95,6 +112,11 @@ fn render(
             break;
         }
     }
+    //render sprites on map
+    for sprite in sprites.iter().take(sprites.len()) {
+        map_show_sprite(sprite, &mut fb, &map)?;
+    }
+
     Ok(())
 }
 
@@ -105,12 +127,12 @@ fn main() -> std::io::Result<()> {
         .arg("out/")
         .output()
         .expect("failed to clear out directory");
-    
+
     //create new /out folder
     Command::new("mkdir")
-            .arg("out")
-            .output()
-            .expect("failed to create directory");
+        .arg("out")
+        .output()
+        .expect("failed to create directory");
 
     let mut fb = Framebuffer::new(1024, 512);
 
@@ -129,28 +151,41 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    let tex_walls = Texture::new("./walltex.png").expect("Could not open texture in main");
+    let tex_walls = Texture::new("./walltex.png").expect("Could not open wall texture");
+    let tex_monsters = Texture::new("./monsters.png").expect("Could not open monster texture");
+    let sprites = vec![
+        Sprite::new(1.834, 8.765, 0),
+        Sprite::new(5.323, 5.365, 1),
+        Sprite::new(4.123, 10.265, 1),
+    ];
 
-    for frame in 0..360 {
+    // for frame in 0..360 {
+    for frame in 0..5 {
         let output_path = "./out/";
         let ss = format!("{}{:05}.ppm", output_path, frame);
         player.a += 2. * std::f32::consts::PI / 360.;
-        render(&mut fb, &map, &player, &tex_walls).expect("Could not render image");
+        render(&mut fb, &map, &player, &sprites, &tex_walls).expect("Could not render image");
         utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
             .expect("Could not drop image");
     }
 
     println!("Rendered all frames, collecting into gif...");
     let output = Command::new("convert")
-                        .args(&["-delay", "10", "-loop", "0", "*.ppm", "rendered.gif"])
-                        .current_dir("out/")
-                        .output()
-                        .expect("Could not start process");
+        .args(&["-delay", "10", "-loop", "0", "*.ppm", "rendered.gif"])
+        .current_dir("out/")
+        .output()
+        .expect("Could not start process");
 
     println!("Status: {}", output.status);
     println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
     println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
     println!("done");
+
+    //open results in Finder
+    Command::new("open")
+        .arg("out/")
+        .output()
+        .expect("Could not open folder");
 
     Ok(())
 }
