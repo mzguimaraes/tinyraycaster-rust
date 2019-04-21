@@ -204,6 +204,7 @@ fn main() -> std::io::Result<()> {
     let tex_walls = Texture::new("./walltex.png").expect("Could not open wall texture");
     let tex_monsters = Texture::new("./monsters.png").expect("Could not open monster texture");
     let sprites = vec![
+        Sprite::new(3.523, 3.812, 2),
         Sprite::new(1.834, 8.765, 0),
         Sprite::new(5.323, 5.365, 1),
         Sprite::new(4.123, 10.265, 1),
