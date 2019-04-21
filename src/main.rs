@@ -26,6 +26,7 @@ fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
 
 fn draw_sprite(
     sprite: &Sprite,
+    depth_buffer: &Vec<f32>,
     fb: &mut Framebuffer,
     player: &Player,
     tex_sprites: &Texture,
@@ -49,12 +50,18 @@ fn draw_sprite(
     // for i in (screen_size - h_offset)..-h_offset {
     //     for j in (fb.h as i32 - v_offset)..-v_offset {
     for i in 0..sprite_screen_size {
-        // println!("sprite_screen_size: {}", sprite_screen_size);
-        // println!("h_offset: {}, i: {}", h_offset, i);
         if h_offset+i<0 || h_offset+i >= screen_size { continue; }
+        if depth_buffer[(h_offset+i) as usize] < sprite_dist { continue; }
         for j in 0..sprite_screen_size {
             if v_offset+j<0 || v_offset+j >= fb.h as i32 { continue; }
-            fb.set_pixel(((fb.w as i32)/2 + h_offset + i) as u32, (v_offset + j) as u32, utils::pack_color_rgb(0, 0, 0))?;
+            // fb.set_pixel(((fb.w as i32)/2 + h_offset + i) as u32, (v_offset + j) as u32, utils::pack_color_rgb(0, 0, 0))?;
+            let color = tex_sprites.get(i as u32*tex_sprites.size/sprite_screen_size as u32, 
+                j as u32*tex_sprites.size/sprite_screen_size as u32, sprite.tex_id)
+                .unwrap();
+            let ( _, _, _, a) = utils::unpack_color(color);
+            if a > 128 {
+                fb.set_pixel(fb.w/2 + (h_offset+i) as u32, (v_offset+j) as u32, color)?;
+            }
         }
     }
     Ok(())
@@ -104,6 +111,7 @@ fn render(
         }
     }
 
+    let mut depth_buffer = vec![1e3; (fb.w/2) as usize];
     for i in 0..fb.w / 2 {
         //cast field of vision on map AND generate 3D view
         let angle: f32 = player.a - player.fov / 2. + player.fov * i as f32 / (fb.w / 2) as f32;
@@ -134,6 +142,7 @@ fn render(
             assert!(texid < tex_walls.count);
 
             let distance = t * f32::cos(angle - player.a);
+            depth_buffer[i as usize] = distance;
             let column_height = (fb.h as f32 / distance) as u32;
 
             let x_texcoord = wall_x_texcoord(x, y, tex_walls);
@@ -156,7 +165,7 @@ fn render(
     //render sprites on map
     for sprite in sprites.iter().take(sprites.len()) {
         map_show_sprite(sprite, fb, &map)?;
-        draw_sprite(sprite, fb, &player, &tex_monsters)?;
+        draw_sprite(sprite, &depth_buffer, fb, &player, &tex_monsters)?;
     }
 
     Ok(())
@@ -248,12 +257,8 @@ mod tests {
     #[test]
     fn unpacks_ints() {
         let packed = 0b00010000000010000000010000000010;
-        let mut r = 0;
-        let mut g = 0;
-        let mut b = 0;
-        let mut a = 0;
 
-        utils::unpack_color(packed, &mut r, &mut g, &mut b, &mut a);
+        let (r, g, b, a) = utils::unpack_color(packed);
 
         assert_eq!(vec![2, 4, 8, 16], vec![r, g, b, a]);
     }
@@ -267,12 +272,7 @@ mod tests {
 
         let color = utils::pack_color_rgba(r, g, b, a);
 
-        let mut rc = 0;
-        let mut gc = 0;
-        let mut bc = 0;
-        let mut ac = 0;
-
-        utils::unpack_color(color, &mut rc, &mut gc, &mut bc, &mut ac);
+        let (rc, gc, bc, ac) = utils::unpack_color(color);
 
         assert_eq!(vec![r, g, b, a], vec![rc, gc, bc, ac]);
     }

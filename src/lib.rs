@@ -174,7 +174,7 @@ pub struct Player {
 pub struct Sprite {
     pub x: f32,
     pub y: f32,
-    tex_id: u32,
+    pub tex_id: u32,
 }
 
 impl Sprite {
@@ -202,16 +202,16 @@ pub mod utils {
         pack_color_rgba(r, g, b, 255)
     }
 
-    pub fn unpack_color(color: u32, r: &mut u8, g: &mut u8, b: &mut u8, a: &mut u8) {
-        *r = (color & 255) as u8; //keep last 8 bits
-        *g = (color.rotate_right(8) & 255) as u8;
-        *b = (color.rotate_right(16) & 255) as u8;
-        *a = (color.rotate_right(24) & 255) as u8;
+    pub fn unpack_color(color: u32) -> (u8, u8, u8, u8) {
+        let r = (color & 255) as u8; //keep last 8 bits
+        let g = (color.rotate_right(8) & 255) as u8;
+        let b = (color.rotate_right(16) & 255) as u8;
+        let a = (color.rotate_right(24) & 255) as u8;
+        return (r, g, b, a);
     }
 
     pub fn drop_ppm_image(
         filename: &str,
-        // imae: &Vec<u32>,
         image: &[u32],
         w: usize,
         h: usize,
@@ -229,11 +229,7 @@ pub mod utils {
             .expect("cannot write header");
 
         for pixel in image.iter().take(w * h) {
-            let mut r = 0;
-            let mut g = 0;
-            let mut b = 0;
-            let mut a = 0;
-            unpack_color(*pixel, &mut r, &mut g, &mut b, &mut a);
+            let (r, g, b, _) = unpack_color(*pixel);
 
             output.write_all(&[r, g, b])?;
         }
