@@ -1,8 +1,10 @@
 extern crate doom_iow;
 use doom_iow::*;
 
+use std::f32;
 use std::process::Command;
 
+// returns the RGBA color corresponding to UV(hitx, hity) on tex_walls
 fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
     let x = hitx - f32::floor(hitx + 0.5);
     let y = hity - f32::floor(hity + 0.5);
@@ -22,6 +24,42 @@ fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
     x_texcoord
 }
 
+fn draw_sprite(
+    sprite: &Sprite,
+    fb: &mut Framebuffer,
+    player: &Player,
+    tex_sprites: &Texture,
+) -> Result<(), FrameError> {
+    //absolute direction from player to sprite (rads)
+    let mut sprite_dir = f32::atan2(sprite.y - player.y, sprite.x - player.x);
+    //remap to range [-pi, pi]
+    while sprite_dir >  f32::consts::PI { sprite_dir -= 2.0 * f32::consts::PI; }
+    while sprite_dir < -f32::consts::PI { sprite_dir += 2.0 * f32::consts::PI; }
+
+    //distance from player to sprite
+    let sprite_dist =
+        f32::sqrt(f32::powi(player.x - sprite.x, 2) + f32::powi(player.y - sprite.y, 2));
+    let sprite_screen_size = f32::min(2000.0, fb.h as f32 / sprite_dist) as i32;
+    let screen_size = fb.w as i32 / 2;
+    let h_offset: i32 = ((sprite_dir - player.a) * (fb.w as f32/2.0)/(player.fov) + 
+        (fb.w as f32/2.0)/2.0 - (sprite_screen_size as f32)/2.0) as i32;
+    let v_offset: i32 = (fb.h as i32/2 - sprite_screen_size/2) as i32;
+
+    // println!("h_offset = {} = ({} - {}) * {}/2/{} + {}/2/2 - {}/2", h_offset, sprite_dir, player.a, fb.w, player.fov, fb.w, sprite_screen_size);
+    // for i in (screen_size - h_offset)..-h_offset {
+    //     for j in (fb.h as i32 - v_offset)..-v_offset {
+    for i in 0..sprite_screen_size {
+        // println!("sprite_screen_size: {}", sprite_screen_size);
+        // println!("h_offset: {}, i: {}", h_offset, i);
+        if h_offset+i<0 || h_offset+i >= screen_size { continue; }
+        for j in 0..sprite_screen_size {
+            if v_offset+j<0 || v_offset+j >= fb.h as i32 { continue; }
+            fb.set_pixel(((fb.w as i32)/2 + h_offset + i) as u32, (v_offset + j) as u32, utils::pack_color_rgb(0, 0, 0))?;
+        }
+    }
+    Ok(())
+}
+
 fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(), FrameError> {
     //(rect_w, rect_h) == size of one map tile
     let rect_w = (fb.w / (map.w * 2)) as f32;
@@ -36,15 +74,18 @@ fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(
 }
 
 fn render(
-    mut fb: &mut Framebuffer,
+    fb: &mut Framebuffer,
     map: &Map,
     player: &Player,
     sprites: &Vec<Sprite>,
     tex_walls: &Texture,
+    tex_monsters: &Texture,
 ) -> Result<(), FrameError> {
     fb.clear(utils::pack_color_rgb(249, 209, 152));
     let rect_w = fb.w / (map.w * 2); //size of one map cell on the screen
     let rect_h = fb.h / map.h;
+
+    // draw overhead map
     for j in 0..map.h {
         for i in 0..map.w {
             if map.is_empty(i, j) {
@@ -64,7 +105,7 @@ fn render(
     }
 
     for i in 0..fb.w / 2 {
-        //cast field of vision AND 3D view
+        //cast field of vision on map AND generate 3D view
         let angle: f32 = player.a - player.fov / 2. + player.fov * i as f32 / (fb.w / 2) as f32;
         for t in 0..2000 {
             //since Rust doesn't allow step by float, remap so step==1
@@ -73,7 +114,7 @@ fn render(
             let x = player.x + t * angle.cos();
             let y = player.y + t * angle.sin();
 
-            //draw the visibility cone on the map
+            // draw the visibility cone on the map
             fb.set_pixel(
                 (x * rect_w as f32) as u32,
                 (y * rect_h as f32) as u32,
@@ -81,12 +122,12 @@ fn render(
             )
             .expect("Could not set pixel");
 
+            // if this map tile isn't empty, we've hit a wall
             if map.is_empty(x as u32, y as u32) {
                 continue;
             }
 
-            //if this map tile isn't empty, we've hit a wall
-            //hit a wall
+            // hit a wall
             let texid = map
                 .get(x as u32, y as u32)
                 .expect("Cannot index this map tile");
@@ -114,7 +155,8 @@ fn render(
     }
     //render sprites on map
     for sprite in sprites.iter().take(sprites.len()) {
-        map_show_sprite(sprite, &mut fb, &map)?;
+        map_show_sprite(sprite, fb, &map)?;
+        draw_sprite(sprite, fb, &player, &tex_monsters)?;
     }
 
     Ok(())
@@ -146,7 +188,6 @@ fn main() -> std::io::Result<()> {
     let map = match Map::init(16, 16) {
         Ok(m) => m,
         Err(_) => {
-            println!("bad parameters given to map");
             panic!("Could not open map");
         }
     };
@@ -164,7 +205,7 @@ fn main() -> std::io::Result<()> {
         let output_path = "./out/";
         let ss = format!("{}{:05}.ppm", output_path, frame);
         player.a += 2. * std::f32::consts::PI / 360.;
-        render(&mut fb, &map, &player, &sprites, &tex_walls).expect("Could not render image");
+        render(&mut fb, &map, &player, &sprites, &tex_walls, &tex_monsters).expect("Could not render image");
         utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
             .expect("Could not drop image");
     }

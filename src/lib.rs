@@ -197,7 +197,7 @@ pub mod utils {
         (b4 << 24) + (b3 << 16) + (b2 << 8) + b1
     }
 
-    //rust does not have function overloading
+    // rust does not have function overloading
     pub fn pack_color_rgb(r: u8, g: u8, b: u8) -> u32 {
         pack_color_rgba(r, g, b, 255)
     }
