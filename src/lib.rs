@@ -167,19 +167,40 @@ impl Framebuffer {
 pub struct Player {
     pub x: f32,
     pub y: f32,
-    pub a: f32,
+    a: f32,
     pub fov: f32,
+}
+
+impl Player {
+    pub fn new(x: f32, y: f32, a: f32, fov: f32) -> Player {
+        Player {
+            x: x,
+            y: y,
+            a: a,
+            fov: fov,
+        }
+    }
+
+    pub fn get_a(&self) -> f32 { self.a }
+
+    pub fn set_a(&mut self, val: f32) {
+        let mut new_val = val.clone();
+        while new_val > 2. * std::f32::consts::PI { new_val -= 2. * std::f32::consts::PI; }
+        while new_val < 0. { new_val += 2. * std::f32::consts::PI; }
+        self.a = new_val;
+    }
 }
 
 pub struct Sprite {
     pub x: f32,
     pub y: f32,
     pub tex_id: u32,
+    pub player_dist: f32,
 }
 
 impl Sprite {
-    pub fn new(x: f32, y: f32, tex_id: u32) -> Sprite {
-        Sprite { x, y, tex_id }
+    pub fn new(x: f32, y: f32, tex_id: u32, player_dist: f32) -> Sprite {
+        Sprite { x, y, tex_id, player_dist }
     }
 }
 
