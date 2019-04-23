@@ -109,38 +109,52 @@ impl Map {
     }
 }
 
-pub struct Framebuffer {
-    pub w: u32,
-    pub h: u32,
-    pub img: Vec<u32>,
-}
-
 #[derive(Debug)]
 pub enum FrameError {
     PixelOutOfBounds,
 }
 
-impl Framebuffer {
-    pub fn new(width: u32, height: u32) -> Framebuffer {
+extern crate sdl2;
+use sdl2::render::WindowCanvas;
+use sdl2::pixels;
+use sdl2::gfx::primitives::DrawRenderer;
+
+pub struct Framebuffer<'a> {
+    pub w: u32,
+    pub h: u32,
+    // pub img: Vec<u32>,
+    pub img: &'a mut WindowCanvas,
+}
+
+impl<'a> Framebuffer<'a> {
+    pub fn new(canvas: &'a mut WindowCanvas, width: u32, height: u32) -> Framebuffer<'a> {
         Framebuffer {
             w: width,
             h: height,
-            img: vec![utils::pack_color_rgb(255, 255, 255); (width * height) as usize],
+            // img: vec![utils::pack_color_rgb(255, 255, 255); (width * height) as usize],
+            img: canvas,
         }
     }
 
     pub fn clear(&mut self, color: u32) {
-        self.img = vec![color; (self.w * self.h) as usize];
+        // self.img = vec![color; (self.w * self.h) as usize];
+        self.img.set_draw_color(pixels::Color::from(utils::unpack_color(color)));
+        self.img.clear();
     }
 
-    pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) -> Result<(), FrameError> {
-        match self.img.get_mut((x + y * self.w) as usize) {
-            Some(pix) => {
-                *pix = color;
-                Ok(())
-            }
-            None => Err(FrameError::PixelOutOfBounds),
-        }
+    pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) -> Result<(), String> {
+        // match self.img.get_mut((x + y * self.w) as usize) {
+        //     Some(pix) => {
+        //         *pix = color;
+        //         Ok(())
+        //     }
+        //     None => Err(FrameError::PixelOutOfBounds),
+        // }
+        self.img.pixel(x as i16, y as i16, pixels::Color::from(utils::unpack_color(color)))
+    }
+
+    pub fn present(&mut self) {
+        self.img.present();
     }
 
     pub fn draw_rectangle(
@@ -150,7 +164,7 @@ impl Framebuffer {
         w: u32,
         h: u32,
         color: u32,
-    ) -> Result<(), FrameError> {
+    ) -> Result<(), String> {
         for i in 0..w {
             for j in 0..h {
                 let cx = x + i;

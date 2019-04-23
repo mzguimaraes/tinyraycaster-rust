@@ -1,8 +1,12 @@
 extern crate doom_iow;
 use doom_iow::*;
 
+extern crate sdl2;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+
 use std::f32;
-use std::process::Command;
+// use std::process::Command;
 
 // returns the RGBA color corresponding to UV(hitx, hity) on tex_walls
 fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
@@ -30,7 +34,7 @@ fn draw_sprite(
     fb: &mut Framebuffer,
     player: &Player,
     tex_sprites: &Texture,
-) -> Result<(), FrameError> {
+) -> Result<(), String> {
     //absolute direction from player to sprite (rads)
     let mut sprite_dir = f32::atan2(sprite.y - player.y, sprite.x - player.x);
     //remap to range [-pi, pi]
@@ -65,7 +69,7 @@ fn draw_sprite(
     Ok(())
 }
 
-fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(), FrameError> {
+fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(), String> {
     //(rect_w, rect_h) == size of one map tile
     let rect_w = (fb.w / (map.w * 2)) as f32;
     let rect_h = (fb.h / map.h) as f32;
@@ -85,7 +89,7 @@ fn render(
     sprites: &mut Vec<Sprite>, // will change order of sprites according to distance from player
     tex_walls: &Texture,
     tex_monsters: &Texture,
-) -> Result<(), FrameError> {
+) -> Result<(), String> {
     fb.clear(utils::pack_color_rgb(249, 209, 152));
     let rect_w = fb.w / (map.w * 2); //size of one map cell on the screen
     let rect_h = fb.h / map.h;
@@ -176,21 +180,41 @@ fn render(
     Ok(())
 }
 
-fn main() -> std::io::Result<()> {
-    //clear the /out folder
-    Command::new("rm")
-        .arg("-rf")
-        .arg("out/")
-        .output()
-        .expect("failed to clear out directory");
+fn main() -> Result<(), String> {
+    // //clear the /out folder
+    // Command::new("rm")
+    //     .arg("-rf")
+    //     .arg("out/")
+    //     .output()
+    //     .expect("failed to clear out directory");
 
-    //create new /out folder
-    Command::new("mkdir")
-        .arg("out")
-        .output()
-        .expect("failed to create directory");
+    // //create new /out folder
+    // Command::new("mkdir")
+    //     .arg("out")
+    //     .output()
+    //     .expect("failed to create directory");
 
-    let mut fb = Framebuffer::new(1024, 512);
+    let win_width = 1024;
+    let win_height = 512;
+
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
+    let window = video_subsystem.window("tinyraycaster-rust", win_width, win_height)
+        .position_centered()
+        .opengl()
+        .build()
+        .map_err(|e| e.to_string())?;
+    
+    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+    // canvas.set_draw_color(sdl2::pixels::Color::RGB(0, 0, 0));
+    // canvas.clear();
+    // canvas.present();
+
+    let mut fb = Framebuffer::new(&mut canvas, win_width, win_height);
+    fb.clear(utils::pack_color_rgb(0, 0, 0));
+    fb.present();
+
+    println!("SDL2 active");
 
     let mut player = Player::new (
         3.456,
@@ -215,35 +239,60 @@ fn main() -> std::io::Result<()> {
         Sprite::new(4.123, 10.265, 1, 0.0),
     ];
 
-    for frame in 0..360 {
-    // for frame in 0..5 {
-    // for frame in 0..1 {
-        let output_path = "./out/";
-        let ss = format!("{}{:05}.ppm", output_path, frame);
-        // player.a -= 2. * std::f32::consts::PI / 360.;
-        player.set_a( player.get_a() - (2. * std::f32::consts::PI / 360.) );
-        render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).expect("Could not render image");
-        utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
-            .expect("Could not drop image");
+    render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).expect("Could not render frame");
+
+    // event handler
+    let mut events = sdl_context.event_pump()?;
+    // SDL2 main rendering loop
+    'gameLoop: loop {
+        // poll events
+        for event in events.poll_iter() {
+            match event {
+                Event::Quit {..} => break 'gameLoop,
+                Event::KeyDown {keycode: Some(Keycode::Escape), ..} => break 'gameLoop,
+                // dummy catch all not implemented
+                _ => {}
+            }
+        }
+
+        // update game logic
+        player.set_a( player.get_a() - (2. * std::f32::consts::PI / 360.));
+
+        // render results
+        render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).expect("Could not render frame");
+        fb.clear(utils::pack_color_rgb(0, 0, 0));
+        fb.present();
     }
+    
+    // for frame in 0..360 {
+    // // for frame in 0..5 {
+    // // for frame in 0..1 {
+    //     let output_path = "./out/";
+    //     let ss = format!("{}{:05}.ppm", output_path, frame);
+    //     // player.a -= 2. * std::f32::consts::PI / 360.;
+    //     player.set_a( player.get_a() - (2. * std::f32::consts::PI / 360.) );
+    //     render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).expect("Could not render image");
+    //     utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
+    //         .expect("Could not drop image");
+    // }
 
-    println!("Rendered all frames, collecting into gif...");
-    let output = Command::new("convert")
-        .args(&["-delay", "10", "-loop", "0", "*.ppm", "rendered.gif"])
-        .current_dir("out/")
-        .output()
-        .expect("Could not start process");
+    // println!("Rendered all frames, collecting into gif...");
+    // let output = Command::new("convert")
+    //     .args(&["-delay", "10", "-loop", "0", "*.ppm", "rendered.gif"])
+    //     .current_dir("out/")
+    //     .output()
+    //     .expect("Could not start process");
 
-    println!("Status: {}", output.status);
-    println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
-    println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-    println!("done");
+    // println!("Status: {}", output.status);
+    // println!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+    // println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+    // println!("done");
 
-    //open results in Finder
-    Command::new("open")
-        .arg("out/")
-        .output()
-        .expect("Could not open folder");
+    // //open results in Finder
+    // Command::new("open")
+    //     .arg("out/")
+    //     .output()
+    //     .expect("Could not open folder");
 
     Ok(())
 }
