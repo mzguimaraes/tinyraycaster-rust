@@ -116,6 +116,7 @@ pub enum FrameError {
 
 extern crate sdl2;
 use sdl2::render::WindowCanvas;
+use sdl2::render::Texture as SdlTexture;
 use sdl2::pixels;
 use sdl2::gfx::primitives::DrawRenderer;
 
@@ -124,15 +125,20 @@ pub struct Framebuffer<'a> {
     pub h: u32,
     // pub img: Vec<u32>,
     pub img: &'a mut WindowCanvas,
+    tex: &'a mut SdlTexture<'a>,
 }
 
+// TODO: img should store a Texture
+// TODO: do we store the vector? canvas? both?
+    // draw to Texture through SDL_UpdateTexture
 impl<'a> Framebuffer<'a> {
-    pub fn new(canvas: &'a mut WindowCanvas, width: u32, height: u32) -> Framebuffer<'a> {
+    pub fn new(canvas: &'a mut WindowCanvas, tex: &'a mut SdlTexture<'a>, w: u32, h: u32) -> Framebuffer<'a> {
         Framebuffer {
-            w: width,
-            h: height,
+            w,
+            h,
             // img: vec![utils::pack_color_rgb(255, 255, 255); (width * height) as usize],
             img: canvas,
+            tex,
         }
     }
 

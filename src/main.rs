@@ -210,6 +210,11 @@ fn main() -> Result<(), String> {
     // canvas.clear();
     // canvas.present();
 
+    let tex_creator = canvas.texture_creator();
+    
+    let mut render_tex = sdl2::render::Renderer::create_texture_streaming(sdl2::pixels::PixelFormatEnum::RGBA32, win_width, win_height).map_err(|e| e.to_string());
+    // let mut render_tex = tex_creator.create_texture_streaming(sdl2::pixels::PixelFormatEnum::RGBA32, win_width, win_height).map_err(|e| e.to_string())?;
+
     let mut fb = Framebuffer::new(&mut canvas, win_width, win_height);
     fb.clear(utils::pack_color_rgb(0, 0, 0));
     fb.present();
