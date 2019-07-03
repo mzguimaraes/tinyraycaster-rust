@@ -26,7 +26,7 @@ fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
 
 fn draw_sprite(
     sprite: &Sprite,
-    depth_buffer: &Vec<f32>,
+    depth_buffer: &[f32],
     fb: &mut Framebuffer,
     player: &Player,
     tex_sprites: &Texture,
@@ -58,7 +58,7 @@ fn draw_sprite(
                 .unwrap();
             let ( _, _, _, a) = utils::unpack_color(color);
             if a > 128 {
-                fb.set_pixel(fb.w/2 + (h_offset+i) as u32, (v_offset+j) as u32, color)?;
+                fb.set_pixel(fb.w/2 + (h_offset+i) as usize, (v_offset+j) as usize, color)?;
             }
         }
     }
@@ -67,11 +67,11 @@ fn draw_sprite(
 
 fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(), FrameError> {
     //(rect_w, rect_h) == size of one map tile
-    let rect_w = (fb.w / (map.w * 2)) as f32;
-    let rect_h = (fb.h / map.h) as f32;
+    let rect_w = (fb.w / (map.w as usize * 2)) as f32;
+    let rect_h = (fb.h / map.h as usize) as f32;
     fb.draw_rectangle(
-        (sprite.x * rect_w - 3.0) as u32,
-        (sprite.y * rect_h - 3.0) as u32,
+        (sprite.x * rect_w - 3.0) as usize,
+        (sprite.y * rect_h - 3.0) as usize,
         6,
         6,
         utils::pack_color_rgb(255, 0, 0),
@@ -87,8 +87,8 @@ fn render(
     tex_monsters: &Texture,
 ) -> Result<(), FrameError> {
     fb.clear(utils::pack_color_rgb(249, 209, 152));
-    let rect_w = fb.w / (map.w * 2); //size of one map cell on the screen
-    let rect_h = fb.h / map.h;
+    let rect_w = fb.w / (map.w as usize * 2); //size of one map cell on the screen
+    let rect_h = fb.h / map.h as usize;
 
     // draw overhead map
     for j in 0..map.h {
@@ -96,8 +96,8 @@ fn render(
             if map.is_empty(i, j) {
                 continue; //skip empty spaces
             }
-            let rect_x = i * rect_w;
-            let rect_y = j * rect_h;
+            let rect_x = i as usize * rect_w;
+            let rect_y = j as usize * rect_h;
             let texid = map.get(i, j).expect("i, j not in map range");
             fb.draw_rectangle(
                 rect_x,
@@ -122,8 +122,8 @@ fn render(
 
             // draw the visibility cone on the map
             fb.set_pixel(
-                (x * rect_w as f32) as u32,
-                (y * rect_h as f32) as u32,
+                (x * rect_w as f32) as usize,
+                (y * rect_h as f32) as usize,
                 utils::pack_color_rgb(160, 160, 160),
             )
             .expect("Could not set pixel");
@@ -151,7 +151,7 @@ fn render(
 
             let pix_x = i + fb.w / 2;
             for j in 0..column_height {
-                let pix_y = j + fb.h / 2 - column_height / 2;
+                let pix_y = j as usize + fb.h / 2 - column_height as usize / 2;
                 if pix_y < fb.h {
                     fb.set_pixel(pix_x, pix_y, column[j as usize])
                         .expect("Could not set pixel");
@@ -215,6 +215,12 @@ fn main() -> std::io::Result<()> {
         Sprite::new(4.123, 10.265, 1, 0.0),
     ];
 
+    make_gif(&mut player, &mut fb, &map, &mut sprites, &tex_walls, &tex_monsters)
+}
+
+fn make_gif(player: &mut Player, fb: &mut Framebuffer, map: &Map, sprites: &mut Vec<Sprite>, 
+    tex_walls: &Texture, tex_monsters: &Texture) -> Result<(), std::io::Error> {
+
     for frame in 0..360 {
     // for frame in 0..5 {
     // for frame in 0..1 {
@@ -222,7 +228,7 @@ fn main() -> std::io::Result<()> {
         let ss = format!("{}{:05}.ppm", output_path, frame);
         // player.a -= 2. * std::f32::consts::PI / 360.;
         player.set_a( player.get_a() - (2. * std::f32::consts::PI / 360.) );
-        render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).expect("Could not render image");
+        render(fb, &map, &player, sprites, &tex_walls, &tex_monsters).expect("Could not render image");
         utils::drop_ppm_image(ss.as_str(), &fb.img, fb.w as usize, fb.h as usize)
             .expect("Could not drop image");
     }
@@ -246,6 +252,7 @@ fn main() -> std::io::Result<()> {
         .expect("Could not open folder");
 
     Ok(())
+
 }
 
 #[cfg(test)]
@@ -259,12 +266,12 @@ mod tests {
         let b = 8;
         let a = 16;
         let packed = utils::pack_color_rgba(r, g, b, a);
-        assert_eq!(packed, 0b00010000000010000000010000000010);
+        assert_eq!(packed, 0b0001_0000_0000_1000_0000_0100_0000_0010);
     }
 
     #[test]
     fn unpacks_ints() {
-        let packed = 0b00010000000010000000010000000010;
+        let packed = 0b0001_0000_0000_1000_0000_0100_0000_0010;
 
         let (r, g, b, a) = utils::unpack_color(packed);
 

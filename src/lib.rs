@@ -1,3 +1,5 @@
+#![allow(clippy::many_single_char_names)] // we're programming graphics, sonny
+
 pub struct Texture {
     pub img_w: u32,
     pub img_h: u32,
@@ -109,9 +111,11 @@ impl Map {
     }
 }
 
+use minifb;
+
 pub struct Framebuffer {
-    pub w: u32,
-    pub h: u32,
+    pub w: usize,
+    pub h: usize,
     pub img: Vec<u32>,
 }
 
@@ -121,11 +125,11 @@ pub enum FrameError {
 }
 
 impl Framebuffer {
-    pub fn new(width: u32, height: u32) -> Framebuffer {
+    pub fn new(width: usize, height: usize) -> Framebuffer {
         Framebuffer {
             w: width,
             h: height,
-            img: vec![utils::pack_color_rgb(255, 255, 255); (width * height) as usize],
+            img: vec![utils::pack_color_rgb(255, 255, 255); width * height],
         }
     }
 
@@ -133,7 +137,7 @@ impl Framebuffer {
         self.img = vec![color; (self.w * self.h) as usize];
     }
 
-    pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) -> Result<(), FrameError> {
+    pub fn set_pixel(&mut self, x: usize, y: usize, color: u32) -> Result<(), FrameError> {
         match self.img.get_mut((x + y * self.w) as usize) {
             Some(pix) => {
                 *pix = color;
@@ -145,10 +149,10 @@ impl Framebuffer {
 
     pub fn draw_rectangle(
         &mut self,
-        x: u32,
-        y: u32,
-        w: u32,
-        h: u32,
+        x: usize,
+        y: usize,
+        w: usize,
+        h: usize,
         color: u32,
     ) -> Result<(), FrameError> {
         for i in 0..w {
@@ -174,17 +178,17 @@ pub struct Player {
 impl Player {
     pub fn new(x: f32, y: f32, a: f32, fov: f32) -> Player {
         Player {
-            x: x,
-            y: y,
-            a: a,
-            fov: fov,
+            x,
+            y,
+            a,
+            fov,
         }
     }
 
     pub fn get_a(&self) -> f32 { self.a }
 
     pub fn set_a(&mut self, val: f32) {
-        let mut new_val = val.clone();
+        let mut new_val = val;
         while new_val > 2. * std::f32::consts::PI { new_val -= 2. * std::f32::consts::PI; }
         while new_val < 0. { new_val += 2. * std::f32::consts::PI; }
         self.a = new_val;
@@ -228,7 +232,7 @@ pub mod utils {
         let g = (color.rotate_right(8) & 255) as u8;
         let b = (color.rotate_right(16) & 255) as u8;
         let a = (color.rotate_right(24) & 255) as u8;
-        return (r, g, b, a);
+        (r, g, b, a)
     }
 
     pub fn drop_ppm_image(
