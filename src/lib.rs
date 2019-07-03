@@ -225,12 +225,24 @@ pub mod utils {
         pack_color_rgba(r, g, b, 255)
     }
 
+    pub fn pack_color_bgra(b: u8, g: u8, r: u8, a: u8) -> u32 {
+        pack_color_rgba(b, g, r, a)
+    }
+
     pub fn unpack_color(color: u32) -> (u8, u8, u8, u8) {
         let r = (color & 255) as u8; //keep last 8 bits
         let g = (color.rotate_right(8) & 255) as u8;
         let b = (color.rotate_right(16) & 255) as u8;
         let a = (color.rotate_right(24) & 255) as u8;
         (r, g, b, a)
+    }
+
+    pub fn unpack_color_bgra(color: u32) -> (u8, u8, u8, u8) {
+        let b = (color & 255) as u8; //keep last 8 bits
+        let g = (color.rotate_right(8) & 255) as u8;
+        let r = (color.rotate_right(16) & 255) as u8;
+        let a = (color.rotate_right(24) & 255) as u8;
+        (b, g, r, a)
     }
 
     pub fn drop_ppm_image(

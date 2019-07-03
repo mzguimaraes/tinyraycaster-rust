@@ -60,8 +60,9 @@ fn draw_sprite(
             let color = tex_sprites.get(i as u32*tex_sprites.size/sprite_screen_size as u32, 
                 j as u32*tex_sprites.size/sprite_screen_size as u32, sprite.tex_id)
                 .unwrap();
-            let ( _, _, _, a) = utils::unpack_color(color);
+            let (r, g, b, a) = utils::unpack_color(color);
             if a > 128 {
+                let color = utils::pack_color_bgra(b, g, r, a);
                 fb.set_pixel(fb.w/2 + (h_offset+i) as usize, (v_offset+j) as usize, color)?;
             }
         }
@@ -78,7 +79,8 @@ fn map_show_sprite(sprite: &Sprite, fb: &mut Framebuffer, map: &Map) -> Result<(
         (sprite.y * rect_h - 3.0) as usize,
         6,
         6,
-        utils::pack_color_rgb(255, 0, 0),
+        // utils::pack_color_rgb(255, 0, 0),
+        utils::pack_color_bgra(0, 0, 255, 255),
     )
 }
 
@@ -90,7 +92,8 @@ fn render(
     tex_walls: &Texture,
     tex_monsters: &Texture,
 ) -> Result<(), FrameError> {
-    fb.clear(utils::pack_color_rgb(249, 209, 152));
+    // fb.clear(utils::pack_color_rgb(249, 209, 152));
+    fb.clear(utils::pack_color_bgra(152, 209, 249, 255));
     let rect_w = fb.w / (map.w as usize * 2); //size of one map cell on the screen
     let rect_h = fb.h / map.h as usize;
 
@@ -128,7 +131,8 @@ fn render(
             fb.set_pixel(
                 (x * rect_w as f32) as usize,
                 (y * rect_h as f32) as usize,
-                utils::pack_color_rgb(160, 160, 160),
+                // utils::pack_color_rgb(160, 160, 160),
+                utils::pack_color_bgra(160, 160, 160, 255),
             )
             .expect("Could not set pixel");
 
@@ -181,18 +185,9 @@ fn render(
 }
 
 fn main() -> std::io::Result<()> {
-    //clear the /out folder
-    Command::new("rm")
-        .arg("-rf")
-        .arg("out/")
-        .output()
-        .expect("failed to clear out directory");
-
-    //create new /out folder
-    Command::new("mkdir")
-        .arg("out")
-        .output()
-        .expect("failed to create directory");
+    // TODO: unfuck colors
+    // TODO: create variable color schemes (RGBA vs BGRA)
+    // TODO: cleanup code
 
     let mut fb = Framebuffer::new(1024, 512);
 
@@ -221,24 +216,35 @@ fn main() -> std::io::Result<()> {
         Sprite::new(4.123, 10.265, 1, 0.0),
     ];
 
-    // make_gif(&mut player, &mut fb, &map, &mut sprites, &tex_walls, &tex_monsters)
+    make_gif(&mut player, &mut fb, &map, &mut sprites, &tex_walls, &tex_monsters).unwrap();
 
     while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
         render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).unwrap();
 
-        player.set_a(player.get_a() - (2. * std::f32::consts::PI / 360.));
+        player.set_a(player.get_a() - 0.1 * (2. * std::f32::consts::PI / 360.));
 
         window.update_with_buffer(fb.img.as_slice()).unwrap();
 
     }
-
-    // print!("{}", window.is_active());
 
     Ok(())
 }
 
 fn make_gif(player: &mut Player, fb: &mut Framebuffer, map: &Map, sprites: &mut Vec<Sprite>, 
     tex_walls: &Texture, tex_monsters: &Texture) -> Result<(), std::io::Error> {
+
+    //clear the /out folder
+    Command::new("rm")
+        .arg("-rf")
+        .arg("out/")
+        .output()
+        .expect("failed to clear out directory");
+
+    //create new /out folder
+    Command::new("mkdir")
+        .arg("out")
+        .output()
+        .expect("failed to create directory");
 
     for frame in 0..360 {
     // for frame in 0..5 {
