@@ -111,8 +111,6 @@ impl Map {
     }
 }
 
-use minifb;
-
 pub struct Framebuffer {
     pub w: usize,
     pub h: usize,

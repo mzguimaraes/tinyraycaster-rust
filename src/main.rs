@@ -1,8 +1,12 @@
+#![allow(dead_code)]
+
 extern crate doom_iow;
 use doom_iow::*;
 
 use std::f32;
 use std::process::Command;
+
+use minifb;
 
 // returns the RGBA color corresponding to UV(hitx, hity) on tex_walls
 fn wall_x_texcoord(hitx: f32, hity: f32, tex_walls: &Texture) -> i32 {
@@ -192,6 +196,8 @@ fn main() -> std::io::Result<()> {
 
     let mut fb = Framebuffer::new(1024, 512);
 
+    let mut window = minifb::Window::new("doom-iow", fb.w, fb.h, minifb::WindowOptions::default()).unwrap();
+
     let mut player = Player::new (
         3.456,
         2.345,
@@ -215,7 +221,20 @@ fn main() -> std::io::Result<()> {
         Sprite::new(4.123, 10.265, 1, 0.0),
     ];
 
-    make_gif(&mut player, &mut fb, &map, &mut sprites, &tex_walls, &tex_monsters)
+    // make_gif(&mut player, &mut fb, &map, &mut sprites, &tex_walls, &tex_monsters)
+
+    while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
+        render(&mut fb, &map, &player, &mut sprites, &tex_walls, &tex_monsters).unwrap();
+
+        player.set_a(player.get_a() - (2. * std::f32::consts::PI / 360.));
+
+        window.update_with_buffer(fb.img.as_slice()).unwrap();
+
+    }
+
+    // print!("{}", window.is_active());
+
+    Ok(())
 }
 
 fn make_gif(player: &mut Player, fb: &mut Framebuffer, map: &Map, sprites: &mut Vec<Sprite>, 
